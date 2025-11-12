@@ -2,6 +2,8 @@
 """Experimental modules."""
 
 import math
+import pathlib
+import platform
 
 import numpy as np
 import torch
@@ -9,6 +11,23 @@ import torch.nn as nn
 from ultralytics.utils.patches import torch_load
 
 from utils.downloads import attempt_download
+
+
+# Fix for PosixPath on Windows when loading models trained on Linux/Mac
+class _WindowsPath(pathlib.PureWindowsPath):
+    """Compatibility wrapper for PosixPath on Windows systems."""
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls, *args, **kwargs)
+
+
+def _patch_posixpath_on_windows():
+    """Patch pathlib.PosixPath to work on Windows when unpickling models."""
+    if platform.system() == 'Windows':
+        pathlib.PosixPath = _WindowsPath
+
+
+# Apply patch immediately on module import
+_patch_posixpath_on_windows()
 
 
 class Sum(nn.Module):

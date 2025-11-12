@@ -1,5 +1,7 @@
 
 import sys,os
+import subprocess
+import shutil
 from wasteDetection.pipeline.training_pipeline import TrainPipeline
 from wasteDetection.utils.main_utils import decodeImage, encodeImageIntoBase64
 from flask import Flask, request, jsonify, render_template,Response
@@ -36,11 +38,35 @@ def predictRoute():
         image = request.json['image']
         decodeImage(image, clApp.filename)
 
-        os.system("cd yolov5/ && python detect.py --weights best.pt --img 416 --conf 0.5 --source ../data/inputImage.jpg")
+        # Run YOLOv5 detection with lower confidence threshold
+        # Use data.yaml if it exists in artifacts, otherwise let model use embedded classes
+        data_yaml_path = "artifacts/data_ingestion/feature_store/data.yaml"
+        
+        # Change to yolov5 directory and run detection
+        if os.path.exists(data_yaml_path):
+            cmd = [sys.executable, "detect.py", "--weights", "best.pt", "--img", "416", 
+                   "--conf", "0.25", "--source", "../data/inputImage.jpg", "--data", f"../{data_yaml_path}"]
+        else:
+            cmd = [sys.executable, "detect.py", "--weights", "best.pt", "--img", "416", 
+                   "--conf", "0.25", "--source", "../data/inputImage.jpg"]
+        
+        print(f"Running detection: {' '.join(cmd)}")
+        subprocess.run(cmd, cwd="yolov5", check=True)
 
-        opencodedbase64 = encodeImageIntoBase64("yolov5/runs/detect/exp/inputImage.jpg")
-        result = {"image": opencodedbase64.decode('utf-8')}
-        os.system("rm -rf yolov5/runs")
+        # Encode the result image
+        result_path = "yolov5/runs/detect/exp/inputImage.jpg"
+        if os.path.exists(result_path):
+            opencodedbase64 = encodeImageIntoBase64(result_path)
+            result = {"image": opencodedbase64.decode('utf-8')}
+        else:
+            print(f"Result image not found at {result_path}")
+            # Return original image if detection failed
+            opencodedbase64 = encodeImageIntoBase64("data/inputImage.jpg")
+            result = {"image": opencodedbase64.decode('utf-8'), "warning": "No detections found"}
+        
+        # Cleanup runs directory (Windows compatible)
+        if os.path.exists("yolov5/runs"):
+            shutil.rmtree("yolov5/runs")
 
     except ValueError as val:
         print(val)
@@ -48,8 +74,10 @@ def predictRoute():
     except KeyError:
         return Response("Key value error incorrect key passed")
     except Exception as e:
-        print(e)
-        result = "Invalid input"
+        print(f"Error in prediction: {e}")
+        import traceback
+        traceback.print_exc()
+        result = {"error": str(e)}
 
     return jsonify(result)
 
