@@ -25,8 +25,8 @@ RUN apt-get update -y && \
 # Upgrade pip
 RUN pip install --upgrade pip
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (using Docker-optimized requirements with CPU-only PyTorch)
+RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Create necessary directories
 RUN mkdir -p data artifacts yolov5/runs
