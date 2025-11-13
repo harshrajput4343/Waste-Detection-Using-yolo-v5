@@ -1,5 +1,5 @@
 # Use Python 3.10 as base image (matching your environment)
-FROM python:3.10.19-slim-buster
+FROM python:3.10-slim-buster
 
 # Set working directory
 WORKDIR /app
