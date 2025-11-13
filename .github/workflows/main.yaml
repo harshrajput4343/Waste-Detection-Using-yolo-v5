@@ -33,10 +33,34 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # NEW: Check initial disk space
+      - name: Check initial disk usage
+        run: |
+          echo "=== Initial Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Docker Disk Usage ==="
+          docker system df
+
+      # NEW: Free up disk space BEFORE building
+      - name: Free up disk space
+        run: |
+          echo "Freeing up disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker system prune -af --volumes
+          echo ""
+          echo "=== After Cleanup ==="
+          df -h
+
       - name: Install Utilities
         run: |
           sudo apt-get update
           sudo apt-get install -y jq unzip
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -48,6 +72,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      # NEW: Check space before Docker build
+      - name: Check disk before Docker build
+        run: |
+          echo "=== Pre-Build Disk Status ==="
+          df -h
+
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
@@ -55,13 +85,17 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
           IMAGE_TAG: latest
         run: |
-          # Build a docker container and
-          # push it to ECR so that it can
-          # be deployed to ECS.
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          
+
+      # NEW: Check space after build
+      - name: Check disk after build
+        if: always()
+        run: |
+          echo "=== Post-Build Disk Status ==="
+          df -h
+          docker system df
           
   Continuous-Deployment:
     needs: build-and-push-ecr-image
@@ -81,18 +115,18 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
       
-      
       - name: Pull latest images
         run: |
          docker pull ${{secrets.AWS_ECR_LOGIN_URI}}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
          
-      # - name: Stop and remove  container if running
+      # - name: Stop and remove container if running
       #   run: |
       #    docker ps -q --filter "name=waste" | grep -q . && docker stop waste && docker rm -fv waste
        
       - name: Run Docker Image to serve users
         run: |
          docker run -d -p 8080:8080 --ipc="host" --name=waste -e 'AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}' -e 'AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}' -e 'AWS_REGION=${{ secrets.AWS_REGION }}'  ${{secrets.AWS_ECR_LOGIN_URI}}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+
       - name: Clean previous images and containers
         run: |
          docker system prune -f
