@@ -101,4 +101,4 @@ docker run -p 8080:8080 harshrajput4343/waste
 
 ---
 
-*Designed and developed  by Harsh Kumar*
+*Designed and developed by Harsh IIIT*
